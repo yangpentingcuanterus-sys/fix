@@ -1,0 +1,2374 @@
+<!doctype html>
+<html lang="id" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-Learning IPS Kelas 7</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/_sdk/data_sdk.js"></script>
+  <script src="/_sdk/element_sdk.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"><!-- GOOGLE APPS SCRIPT BACKEND CONFIG -->
+  <script>
+    const BACKEND_URL = "https://script.google.com/macros/s/AKfycbyRj8XLYOjPZHcSWEfxAz1S_CRz-HJLD_1kQ74R-fEGgxqPfOTt2SCNOJecl9FYXmKO-g/exec";
+    
+    async function callBackend(action, data = {}) {
+      try {
+        const response = await fetch(BACKEND_URL, {
+          method: "POST",
+          body: JSON.stringify({ action, ...data })
+        });
+        return await response.json();
+      } catch (error) {
+        console.error("❌ Backend error:", error);
+        return { status: "error", message: "Backend tidak terhubung" };
+      }
+    }
+  </script>
+  <style>
+    body { box-sizing: border-box; }
+    * { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .sidebar-menu { transition: all 0.2s ease; }
+    .sidebar-menu:hover { transform: translateX(4px); }
+    .sidebar-menu.active { background: linear-gradient(90deg, #1e40af 0%, #3b82f6 100%); }
+    .card-hover { transition: all 0.3s ease; }
+    .card-hover:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+    .progress-ring { transition: stroke-dashoffset 0.5s ease; }
+    .fade-in { animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .quiz-locked { filter: blur(10px); pointer-events: none; }
+    .toast { animation: slideIn 0.3s ease; }
+    @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+ </head>
+ <body class="h-full bg-slate-50">
+  <div id="app" class="h-full w-full"></div>
+  <script>
+    // ==================== STATE MANAGEMENT ====================
+    let appState = {
+      currentUser: null,
+      userRole: null,
+      currentPage: 'dashboard',
+      isLoggedIn: false,
+      quizLocked: false,
+      lockCountdown: 0,
+      tabSwitchCount: 0,
+      backendConnected: false
+    };
+
+    let allData = [];
+    let config = {};
+
+    const defaultConfig = {
+      app_title: 'E-Learning IPS Kelas 7',
+      school_name: 'SMP Negeri 1',
+      primary_color: '#1e3a5f',
+      secondary_color: '#3b82f6',
+      accent_color: '#10b981',
+      text_color: '#1e293b',
+      bg_color: '#f8fafc'
+    };
+
+    // ==================== DATA HELPERS ====================
+    function getDataByType(type) {
+      return allData.filter(d => d.type === type);
+    }
+
+    function generateId() {
+      return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    }
+
+    // ==================== SDK INITIALIZATION ====================
+    const dataHandler = {
+      onDataChanged(data) {
+        allData = data;
+        if (appState.isLoggedIn) {
+          renderApp();
+        }
+      }
+    };
+
+    async function initApp() {
+      // Test backend connection
+      const backendTest = await callBackend("checkAndSetupDatabase");
+      appState.backendConnected = backendTest.status === "success";
+      
+      if (appState.backendConnected) {
+        console.log("✅ Backend connected:", backendTest);
+      } else {
+        console.warn("⚠️ Backend connection failed, using local data only");
+      }
+
+      const result = await window.dataSdk.init(dataHandler);
+      if (!result.isOk) {
+        console.error('Failed to init data SDK');
+      }
+      
+      if (window.elementSdk) {
+        window.elementSdk.init({
+          defaultConfig,
+          onConfigChange: async (newConfig) => {
+            config = { ...defaultConfig, ...newConfig };
+            renderApp();
+          },
+          mapToCapabilities: (cfg) => ({
+            recolorables: [
+              { get: () => cfg.primary_color || defaultConfig.primary_color, set: (v) => { cfg.primary_color = v; window.elementSdk.setConfig({ primary_color: v }); }},
+              { get: () => cfg.secondary_color || defaultConfig.secondary_color, set: (v) => { cfg.secondary_color = v; window.elementSdk.setConfig({ secondary_color: v }); }},
+              { get: () => cfg.accent_color || defaultConfig.accent_color, set: (v) => { cfg.accent_color = v; window.elementSdk.setConfig({ accent_color: v }); }},
+              { get: () => cfg.text_color || defaultConfig.text_color, set: (v) => { cfg.text_color = v; window.elementSdk.setConfig({ text_color: v }); }},
+              { get: () => cfg.bg_color || defaultConfig.bg_color, set: (v) => { cfg.bg_color = v; window.elementSdk.setConfig({ bg_color: v }); }}
+            ],
+            borderables: [],
+            fontEditable: undefined,
+            fontSizeable: undefined
+          }),
+          mapToEditPanelValues: (cfg) => new Map([
+            ['app_title', cfg.app_title || defaultConfig.app_title],
+            ['school_name', cfg.school_name || defaultConfig.school_name]
+          ])
+        });
+        config = { ...defaultConfig, ...window.elementSdk.config };
+      } else {
+        config = defaultConfig;
+      }
+      
+      renderLoginPage();
+    }
+
+    // ==================== TOAST NOTIFICATION ====================
+    function showToast(message, type = 'success') {
+      const existing = document.querySelector('.toast-container');
+      if (existing) existing.remove();
+
+      const colors = {
+        success: 'bg-emerald-500',
+        error: 'bg-red-500',
+        warning: 'bg-amber-500',
+        info: 'bg-blue-500'
+      };
+
+      const icons = {
+        success: '✓',
+        error: '✕',
+        warning: '⚠',
+        info: 'ℹ'
+      };
+
+      const container = document.createElement('div');
+      container.className = 'toast-container fixed top-4 right-4 z-50';
+      container.innerHTML = `
+        <div class="toast ${colors[type]} text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3">
+          <span class="text-xl">${icons[type]}</span>
+          <span class="font-medium">${message}</span>
+        </div>
+      `;
+      document.body.appendChild(container);
+      setTimeout(() => container.remove(), 3000);
+    }
+
+    // ==================== LOGIN PAGE ====================
+    function renderLoginPage() {
+      const app = document.getElementById('app');
+      app.innerHTML = `
+        <div class="min-h-full w-full flex items-center justify-center p-4" style="background: linear-gradient(135deg, ${config.primary_color} 0%, ${config.secondary_color} 100%);">
+          <div class="w-full max-w-md">
+            <div class="text-center mb-8 fade-in">
+              <div class="w-20 h-20 mx-auto mb-4 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                </svg>
+              </div>
+              <h1 class="text-3xl font-bold text-white mb-2">${config.app_title || defaultConfig.app_title}</h1>
+              <p class="text-white/80">${config.school_name || defaultConfig.school_name}</p>
+              ${!appState.backendConnected ? `
+                <p class="text-yellow-200 text-sm mt-3">⚠️ Backend offline - Using local data</p>
+              ` : `
+                <p class="text-green-200 text-sm mt-3">✅ Backend connected</p>
+              `}
+            </div>
+
+            <div class="bg-white rounded-3xl shadow-2xl p-8 fade-in">
+              <div class="flex mb-6 bg-slate-100 rounded-xl p-1">
+                <button id="tabSiswa" onclick="switchLoginTab('siswa')" class="flex-1 py-3 rounded-lg font-semibold transition-all bg-white shadow text-slate-800">
+                  👨‍🎓 Siswa
+                </button>
+                <button id="tabGuru" onclick="switchLoginTab('guru')" class="flex-1 py-3 rounded-lg font-semibold transition-all text-slate-500">
+                  👨‍🏫 Guru
+                </button>
+              </div>
+
+              <div id="loginFormSiswa">
+                <div class="space-y-4">
+                  <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-2">Nama Lengkap</label>
+                    <input type="text" id="namaSiswa" placeholder="Masukkan nama lengkap" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors">
+                  </div>
+                  <div class="grid grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-slate-600 mb-2">No. Absen</label>
+                      <input type="text" id="absenSiswa" placeholder="01" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors">
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-slate-600 mb-2">Kelas</label>
+                      <select id="kelasSiswa" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors">
+                        <option value="">Pilih Kelas</option>
+                        <option value="7A">7A</option>
+                        <option value="7B">7B</option>
+                        <option value="7C">7C</option>
+                        <option value="7D">7D</option>
+                        <option value="7E">7E</option>
+                      </select>
+                    </div>
+                  </div>
+                  <button onclick="loginSiswa()" class="w-full py-4 rounded-xl font-bold text-white transition-all hover:opacity-90 hover:shadow-lg" style="background: linear-gradient(90deg, ${config.primary_color} 0%, ${config.secondary_color} 100%);">
+                    Masuk sebagai Siswa
+                  </button>
+                </div>
+              </div>
+
+              <div id="loginFormGuru" class="hidden">
+                <div class="space-y-4">
+                  <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-2">Username</label>
+                    <input type="text" id="usernameGuru" placeholder="Username" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors">
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-2">Password</label>
+                    <input type="password" id="passwordGuru" placeholder="Password" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors">
+                  </div>
+                  <button onclick="loginGuru()" class="w-full py-4 rounded-xl font-bold text-white transition-all hover:opacity-90 hover:shadow-lg" style="background: linear-gradient(90deg, ${config.primary_color} 0%, ${config.secondary_color} 100%);">
+                    Masuk sebagai Guru
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function switchLoginTab(tab) {
+      const tabSiswa = document.getElementById('tabSiswa');
+      const tabGuru = document.getElementById('tabGuru');
+      const formSiswa = document.getElementById('loginFormSiswa');
+      const formGuru = document.getElementById('loginFormGuru');
+
+      if (tab === 'siswa') {
+        tabSiswa.className = 'flex-1 py-3 rounded-lg font-semibold transition-all bg-white shadow text-slate-800';
+        tabGuru.className = 'flex-1 py-3 rounded-lg font-semibold transition-all text-slate-500';
+        formSiswa.classList.remove('hidden');
+        formGuru.classList.add('hidden');
+      } else {
+        tabGuru.className = 'flex-1 py-3 rounded-lg font-semibold transition-all bg-white shadow text-slate-800';
+        tabSiswa.className = 'flex-1 py-3 rounded-lg font-semibold transition-all text-slate-500';
+        formGuru.classList.remove('hidden');
+        formSiswa.classList.add('hidden');
+      }
+    }
+
+    async function loginSiswa() {
+      const nama = document.getElementById('namaSiswa').value.trim();
+      const absen = document.getElementById('absenSiswa').value.trim();
+      const kelas = document.getElementById('kelasSiswa').value;
+
+      if (!nama || !absen || !kelas) {
+        showToast('Mohon lengkapi semua data!', 'error');
+        return;
+      }
+
+      const siswaList = getDataByType('siswa');
+      let siswa = siswaList.find(s => s.nama.toLowerCase() === nama.toLowerCase() && s.absen === absen && s.kelas === kelas);
+
+      if (!siswa) {
+        showToast('Data siswa tidak ditemukan. Hubungi guru Anda.', 'error');
+        return;
+      }
+
+      appState.currentUser = siswa;
+      appState.userRole = 'siswa';
+      appState.isLoggedIn = true;
+      appState.currentPage = 'profil';
+      showToast(`Selamat datang, ${nama}!`, 'success');
+      renderApp();
+    }
+
+    function loginGuru() {
+      const username = document.getElementById('usernameGuru').value.trim();
+      const password = document.getElementById('passwordGuru').value;
+
+      if (username === 'Guru' && password === 'jelly') {
+        appState.currentUser = { nama: 'Guru IPS', role: 'guru' };
+        appState.userRole = 'guru';
+        appState.isLoggedIn = true;
+        appState.currentPage = 'dashboard';
+        showToast('Selamat datang, Guru!', 'success');
+        renderApp();
+      } else {
+        showToast('Username atau password salah!', 'error');
+      }
+    }
+
+    function logout() {
+      appState = {
+        currentUser: null,
+        userRole: null,
+        currentPage: 'dashboard',
+        isLoggedIn: false,
+        quizLocked: false,
+        lockCountdown: 0,
+        tabSwitchCount: 0,
+        backendConnected: appState.backendConnected
+      };
+      renderLoginPage();
+      showToast('Anda telah keluar', 'info');
+    }
+
+    // ==================== MAIN APP RENDER ====================
+    function renderApp() {
+      const app = document.getElementById('app');
+      
+      if (appState.userRole === 'guru') {
+        renderGuruDashboard();
+      } else {
+        renderSiswaDashboard();
+      }
+    }
+
+    // ==================== GURU DASHBOARD ====================
+    function renderGuruDashboard() {
+      const app = document.getElementById('app');
+      const siswaCount = getDataByType('siswa').length;
+      const materiCount = getDataByType('materi').length;
+      const tugasCount = getDataByType('tugas').length;
+      const submisiCount = getDataByType('submisi').length;
+
+      const menuItems = [
+        { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+        { id: 'siswa', icon: '👥', label: 'Data Siswa' },
+        { id: 'materi', icon: '📚', label: 'Kelola Materi' },
+        { id: 'tugas', icon: '📝', label: 'Kelola Tugas' },
+        { id: 'kuis', icon: '❓', label: 'Kelola Kuis' },
+        { id: 'penilaian', icon: '✅', label: 'Penilaian' },
+        { id: 'rekap', icon: '📈', label: 'Rekap Nilai' }
+      ];
+
+      app.innerHTML = `
+        <div class="flex h-full w-full">
+          <!-- Sidebar -->
+          <aside class="w-64 h-full flex-shrink-0 text-white flex flex-col" style="background: linear-gradient(180deg, ${config.primary_color} 0%, #0f172a 100%);">
+            <div class="p-6 border-b border-white/10">
+              <div class="flex items-center gap-3">
+                <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                  <span class="text-2xl">👨‍🏫</span>
+                </div>
+                <div>
+                  <h2 class="font-bold">${appState.currentUser.nama}</h2>
+                  <p class="text-sm text-white/60">Administrator</p>
+                </div>
+              </div>
+            </div>
+            
+            <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+              ${menuItems.map(item => `
+                <button onclick="navigateTo('${item.id}')" class="sidebar-menu w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${appState.currentPage === item.id ? 'active text-white' : 'text-white/70 hover:bg-white/10'}">
+                  <span class="text-xl">${item.icon}</span>
+                  <span class="font-medium">${item.label}</span>
+                </button>
+              `).join('')}
+            </nav>
+
+            <div class="p-4 border-t border-white/10">
+              <button onclick="logout()" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:bg-red-500/20 hover:text-red-300 transition-all">
+                <span class="text-xl">🚪</span>
+                <span class="font-medium">Keluar</span>
+              </button>
+            </div>
+          </aside>
+
+          <!-- Main Content -->
+          <main class="flex-1 h-full overflow-y-auto" style="background-color: ${config.bg_color};">
+            <div id="mainContent" class="p-8">
+              ${renderGuruContent()}
+            </div>
+          </main>
+        </div>
+      `;
+    }
+
+    function renderGuruContent() {
+      switch(appState.currentPage) {
+        case 'dashboard': return renderGuruDashboardContent();
+        case 'siswa': return renderSiswaManagement();
+        case 'materi': return renderMateriManagement();
+        case 'tugas': return renderTugasManagement();
+        case 'kuis': return renderKuisManagement();
+        case 'penilaian': return renderPenilaianContent();
+        case 'rekap': return renderRekapNilai();
+        default: return renderGuruDashboardContent();
+      }
+    }
+
+    function renderGuruDashboardContent() {
+      const siswaCount = getDataByType('siswa').length;
+      const materiCount = getDataByType('materi').length;
+      const tugasCount = getDataByType('tugas').length;
+      const submisiCount = getDataByType('submisi').length;
+      const submisiBelumDinilai = getDataByType('submisi').filter(s => !s.nilai || s.nilai === '').length;
+
+      return `
+        <div class="fade-in">
+          <div class="mb-8">
+            <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Dashboard Guru</h1>
+            <p class="text-slate-500 mt-1">Selamat datang kembali! Berikut ringkasan data Anda.</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="card-hover bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <div class="flex items-center justify-between mb-4">
+                <div class="w-14 h-14 rounded-2xl flex items-center justify-center" style="background: ${config.secondary_color}20;">
+                  <span class="text-3xl">👥</span>
+                </div>
+                <span class="text-3xl font-bold" style="color: ${config.secondary_color};">${siswaCount}</span>
+              </div>
+              <h3 class="font-semibold text-slate-700">Total Siswa</h3>
+              <p class="text-sm text-slate-400">Terdaftar di sistem</p>
+            </div>
+
+            <div class="card-hover bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <div class="flex items-center justify-between mb-4">
+                <div class="w-14 h-14 rounded-2xl flex items-center justify-center" style="background: ${config.accent_color}20;">
+                  <span class="text-3xl">📚</span>
+                </div>
+                <span class="text-3xl font-bold" style="color: ${config.accent_color};">${materiCount}</span>
+              </div>
+              <h3 class="font-semibold text-slate-700">Total Materi</h3>
+              <p class="text-sm text-slate-400">Materi pembelajaran</p>
+            </div>
+
+            <div class="card-hover bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <div class="flex items-center justify-between mb-4">
+                <div class="w-14 h-14 rounded-2xl flex items-center justify-center" style="background: #f59e0b20;">
+                  <span class="text-3xl">📝</span>
+                </div>
+                <span class="text-3xl font-bold text-amber-500">${tugasCount}</span>
+              </div>
+              <h3 class="font-semibold text-slate-700">Total Tugas</h3>
+              <p class="text-sm text-slate-400">Tugas aktif</p>
+            </div>
+
+            <div class="card-hover bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <div class="flex items-center justify-between mb-4">
+                <div class="w-14 h-14 rounded-2xl flex items-center justify-center bg-red-50">
+                  <span class="text-3xl">⏳</span>
+                </div>
+                <span class="text-3xl font-bold text-red-500">${submisiBelumDinilai}</span>
+              </div>
+              <h3 class="font-semibold text-slate-700">Belum Dinilai</h3>
+              <p class="text-sm text-slate-400">Menunggu penilaian</p>
+            </div>
+          </div>
+
+          <!-- Recent Submissions -->
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+            <h2 class="text-xl font-bold text-slate-800 mb-4">📬 Kiriman Terbaru</h2>
+            ${submisiCount === 0 ? `
+              <div class="text-center py-8 text-slate-400">
+                <span class="text-4xl mb-2 block">📭</span>
+                <p>Belum ada kiriman tugas dari siswa</p>
+              </div>
+            ` : `
+              <div class="space-y-3">
+                ${getDataByType('submisi').slice(-5).reverse().map(s => `
+                  <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                    <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+                        ${(s.nama_siswa || 'S')[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <p class="font-medium text-slate-700">${s.nama_siswa || 'Siswa'}</p>
+                        <p class="text-sm text-slate-400">${s.judul_tugas || 'Tugas'} • ${s.kelas || '-'}</p>
+                      </div>
+                    </div>
+                    <span class="px-3 py-1 rounded-full text-sm font-medium ${s.nilai ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}">
+                      ${s.nilai ? `Nilai: ${s.nilai}` : 'Belum dinilai'}
+                    </span>
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    // ==================== SISWA MANAGEMENT ====================
+    function renderSiswaManagement() {
+      const siswaList = getDataByType('siswa');
+      
+      return `
+        <div class="fade-in">
+          <div class="flex items-center justify-between mb-8">
+            <div>
+              <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Data Siswa</h1>
+              <p class="text-slate-500 mt-1">Kelola data siswa dengan mudah</p>
+            </div>
+            <button onclick="showAddSiswaModal()" class="px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90 hover:shadow-lg" style="background: ${config.secondary_color};">
+              + Tambah Siswa
+            </button>
+          </div>
+
+          <!-- Bulk Import Section -->
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6">
+            <h3 class="font-bold text-slate-800 mb-4">📥 Import Data Massal dari Backend</h3>
+            <p class="text-sm text-slate-500 mb-3">Format: Nama, Absen, Kelas (pisahkan dengan enter atau titik koma)</p>
+            <p class="text-xs text-slate-400 mb-3">Contoh: Andi, 01, 7A; Budi, 02, 7B</p>
+            <textarea id="bulkImportData" rows="4" placeholder="Paste data siswa di sini..." class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors mb-3"></textarea>
+            <div class="flex gap-3">
+              <button onclick="processBulkImport()" class="flex-1 px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90" style="background: ${config.accent_color};">
+                Proses Import (Local)
+              </button>
+              <button onclick="processBulkImportBackend()" class="flex-1 px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90" style="background: #8b5cf6;">
+                📡 Import via Backend
+              </button>
+            </div>
+          </div>
+
+          <!-- Siswa Table -->
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead style="background: ${config.primary_color};">
+                  <tr>
+                    <th class="text-left px-6 py-4 text-white font-semibold">No</th>
+                    <th class="text-left px-6 py-4 text-white font-semibold">Nama</th>
+                    <th class="text-left px-6 py-4 text-white font-semibold">Absen</th>
+                    <th class="text-left px-6 py-4 text-white font-semibold">Kelas</th>
+                    <th class="text-left px-6 py-4 text-white font-semibold">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${siswaList.length === 0 ? `
+                    <tr><td colspan="5" class="text-center py-12 text-slate-400">
+                      <span class="text-4xl block mb-2">👥</span>
+                      Belum ada data siswa
+                    </td></tr>
+                  ` : siswaList.map((s, i) => `
+                    <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td class="px-6 py-4 text-slate-600">${i + 1}</td>
+                      <td class="px-6 py-4 font-medium text-slate-800">${s.nama}</td>
+                      <td class="px-6 py-4 text-slate-600">${s.absen}</td>
+                      <td class="px-6 py-4"><span class="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-sm font-medium">${s.kelas}</span></td>
+                      <td class="px-6 py-4">
+                        <div class="flex gap-2">
+                          <button onclick="editSiswa('${s.__backendId}')" class="p-2 rounded-lg bg-amber-100 text-amber-600 hover:bg-amber-200 transition-colors">✏��</button>
+                          <button onclick="confirmDeleteSiswa('${s.__backendId}')" class="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors">🗑️</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal -->
+        <div id="siswaModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h3 id="siswaModalTitle" class="text-xl font-bold text-slate-800 mb-4">Tambah Siswa</h3>
+            <input type="hidden" id="editSiswaId">
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Nama Lengkap</label>
+                <input type="text" id="inputNamaSiswa" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-600 mb-2">No. Absen</label>
+                  <input type="text" id="inputAbsenSiswa" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-600 mb-2">Kelas</label>
+                  <select id="inputKelasSiswa" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+                    <option value="7A">7A</option>
+                    <option value="7B">7B</option>
+                    <option value="7C">7C</option>
+                    <option value="7D">7D</option>
+                    <option value="7E">7E</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+              <button onclick="closeSiswaModal()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">Batal</button>
+              <button onclick="saveSiswa()" class="flex-1 px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90" style="background: ${config.secondary_color};">Simpan</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function showAddSiswaModal() {
+      document.getElementById('siswaModal').classList.remove('hidden');
+      document.getElementById('siswaModalTitle').textContent = 'Tambah Siswa';
+      document.getElementById('editSiswaId').value = '';
+      document.getElementById('inputNamaSiswa').value = '';
+      document.getElementById('inputAbsenSiswa').value = '';
+      document.getElementById('inputKelasSiswa').value = '7A';
+    }
+
+    function closeSiswaModal() {
+      document.getElementById('siswaModal').classList.add('hidden');
+    }
+
+    function editSiswa(id) {
+      const siswa = allData.find(d => d.__backendId === id);
+      if (!siswa) return;
+
+      document.getElementById('siswaModal').classList.remove('hidden');
+      document.getElementById('siswaModalTitle').textContent = 'Edit Siswa';
+      document.getElementById('editSiswaId').value = id;
+      document.getElementById('inputNamaSiswa').value = siswa.nama;
+      document.getElementById('inputAbsenSiswa').value = siswa.absen;
+      document.getElementById('inputKelasSiswa').value = siswa.kelas;
+    }
+
+    async function saveSiswa() {
+      const id = document.getElementById('editSiswaId').value;
+      const nama = document.getElementById('inputNamaSiswa').value.trim();
+      const absen = document.getElementById('inputAbsenSiswa').value.trim();
+      const kelas = document.getElementById('inputKelasSiswa').value;
+
+      if (!nama || !absen) {
+        showToast('Mohon lengkapi semua data!', 'error');
+        return;
+      }
+
+      if (allData.length >= 999 && !id) {
+        showToast('Batas maksimum data tercapai!', 'error');
+        return;
+      }
+
+      if (id) {
+        const siswa = allData.find(d => d.__backendId === id);
+        if (siswa) {
+          const result = await window.dataSdk.update({ ...siswa, nama, absen, kelas });
+          if (result.isOk) {
+            showToast('Data siswa berhasil diperbarui!', 'success');
+          } else {
+            showToast('Gagal memperbarui data!', 'error');
+          }
+        }
+      } else {
+        const result = await window.dataSdk.create({
+          type: 'siswa',
+          nama,
+          absen,
+          kelas,
+          progress: '0',
+          materi_selesai: '',
+          created_at: new Date().toISOString()
+        });
+        if (result.isOk) {
+          showToast('Siswa berhasil ditambahkan!', 'success');
+        } else {
+          showToast('Gagal menambahkan siswa!', 'error');
+        }
+      }
+
+      closeSiswaModal();
+    }
+
+    let pendingDeleteSiswaId = null;
+
+    function confirmDeleteSiswa(id) {
+      pendingDeleteSiswaId = id;
+      const siswa = allData.find(d => d.__backendId === id);
+      const modal = document.createElement('div');
+      modal.id = 'deleteConfirmModal';
+      modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+      modal.innerHTML = `
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center">
+          <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span class="text-3xl">🗑️</span>
+          </div>
+          <h3 class="text-xl font-bold text-slate-800 mb-2">Hapus Siswa?</h3>
+          <p class="text-slate-500 mb-6">Yakin ingin menghapus <strong>${siswa?.nama || 'siswa'}</strong>?</p>
+          <div class="flex gap-3">
+            <button onclick="closeDeleteConfirm()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">Batal</button>
+            <button onclick="executeDeleteSiswa()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-red-500 text-white hover:bg-red-600">Hapus</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    function closeDeleteConfirm() {
+      const modal = document.getElementById('deleteConfirmModal');
+      if (modal) modal.remove();
+      pendingDeleteSiswaId = null;
+    }
+
+    async function executeDeleteSiswa() {
+      if (!pendingDeleteSiswaId) return;
+      const siswa = allData.find(d => d.__backendId === pendingDeleteSiswaId);
+      if (siswa) {
+        const result = await window.dataSdk.delete(siswa);
+        if (result.isOk) {
+          showToast('Siswa berhasil dihapus!', 'success');
+        } else {
+          showToast('Gagal menghapus siswa!', 'error');
+        }
+      }
+      closeDeleteConfirm();
+    }
+
+    async function processBulkImport() {
+      const data = document.getElementById('bulkImportData').value.trim();
+      if (!data) {
+        showToast('Mohon masukkan data siswa!', 'error');
+        return;
+      }
+
+      const rows = data.split(/[;\n]/).filter(r => r.trim());
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const row of rows) {
+        const parts = row.split(',').map(p => p.trim());
+        if (parts.length >= 3) {
+          const [nama, absen, kelas] = parts;
+          if (nama && absen && kelas) {
+            if (allData.length >= 999) {
+              showToast('Batas maksimum data tercapai!', 'warning');
+              break;
+            }
+            const result = await window.dataSdk.create({
+              type: 'siswa',
+              nama,
+              absen,
+              kelas,
+              progress: '0',
+              materi_selesai: '',
+              created_at: new Date().toISOString()
+            });
+            if (result.isOk) successCount++;
+            else failCount++;
+          }
+        }
+      }
+
+      document.getElementById('bulkImportData').value = '';
+      showToast(`✅ Berhasil import ${successCount} siswa${failCount > 0 ? `, ${failCount} gagal` : ''}`, successCount > 0 ? 'success' : 'error');
+    }
+
+    async function processBulkImportBackend() {
+      const data = document.getElementById('bulkImportData').value.trim();
+      if (!data) {
+        showToast('Mohon masukkan data siswa!', 'error');
+        return;
+      }
+
+      if (!appState.backendConnected) {
+        showToast('Backend tidak terhubung! Gunakan Import Local.', 'error');
+        return;
+      }
+
+      const rows = data.split(/[;\n]/).filter(r => r.trim());
+      const dataArray = [];
+
+      for (const row of rows) {
+        const parts = row.split(',').map(p => p.trim());
+        if (parts.length >= 3) {
+          const [nama, absen, kelas] = parts;
+          if (nama && absen && kelas) {
+            dataArray.push({ nama, no_absen: absen, kelas });
+          }
+        }
+      }
+
+      if (dataArray.length === 0) {
+        showToast('Format data tidak valid!', 'error');
+        return;
+      }
+
+      const button = event.target;
+      button.textContent = '⏳ Mengirim...';
+      button.disabled = true;
+
+      const result = await callBackend('tambahSiswaBulk', { dataArray });
+      
+      button.textContent = '📡 Import via Backend';
+      button.disabled = false;
+
+      if (result.status === 'success') {
+        document.getElementById('bulkImportData').value = '';
+        showToast(`✅ ${result.added} siswa ditambahkan, ${result.skipped} duplikasi lewati`, 'success');
+      } else {
+        showToast(`❌ ${result.message}`, 'error');
+      }
+    }
+
+    // ==================== MATERI MANAGEMENT ====================
+    function renderMateriManagement() {
+      const materiList = getDataByType('materi');
+      
+      return `
+        <div class="fade-in">
+          <div class="flex items-center justify-between mb-8">
+            <div>
+              <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Kelola Materi</h1>
+              <p class="text-slate-500 mt-1">Buat dan kelola materi pembelajaran</p>
+            </div>
+            <button onclick="showAddMateriModal()" class="px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90 hover:shadow-lg" style="background: ${config.secondary_color};">
+              + Tambah Materi
+            </button>
+          </div>
+
+          <div class="grid gap-6">
+            ${materiList.length === 0 ? `
+              <div class="bg-white rounded-2xl p-12 text-center shadow-sm border border-slate-100">
+                <span class="text-6xl block mb-4">📚</span>
+                <h3 class="text-xl font-bold text-slate-700 mb-2">Belum Ada Materi</h3>
+                <p class="text-slate-500">Mulai tambahkan materi pembelajaran pertama Anda</p>
+              </div>
+            ` : materiList.map((m, i) => `
+              <div class="card-hover bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                <div class="flex items-start justify-between">
+                  <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-3">
+                      <span class="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold" style="background: ${config.secondary_color};">${i + 1}</span>
+                      <div>
+                        <h3 class="text-lg font-bold text-slate-800">${m.judul}</h3>
+                        <p class="text-sm text-slate-400">Kelas: ${m.kelas || 'Semua'}</p>
+                      </div>
+                    </div>
+                    <p class="text-slate-600 line-clamp-2">${m.konten ? m.konten.substring(0, 150) + '...' : 'Tidak ada konten'}</p>
+                    ${m.video_url ? `<p class="text-sm text-blue-500 mt-2">🎥 Video terlampir</p>` : ''}
+                  </div>
+                  <div class="flex gap-2 ml-4">
+                    <button onclick="editMateri('${m.__backendId}')" class="p-2 rounded-lg bg-amber-100 text-amber-600 hover:bg-amber-200 transition-colors">✏️</button>
+                    <button onclick="confirmDeleteMateri('${m.__backendId}')" class="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors">🗑️</button>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Modal Materi -->
+        <div id="materiModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl my-8">
+            <h3 id="materiModalTitle" class="text-xl font-bold text-slate-800 mb-4">Tambah Materi</h3>
+            <input type="hidden" id="editMateriId">
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Judul Materi</label>
+                <input type="text" id="inputJudulMateri" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Kelas</label>
+                <select id="inputKelasMateri" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+                  <option value="">Semua Kelas</option>
+                  <option value="7A">7A</option>
+                  <option value="7B">7B</option>
+                  <option value="7C">7C</option>
+                  <option value="7D">7D</option>
+                  <option value="7E">7E</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Konten Materi</label>
+                <textarea id="inputKontenMateri" rows="8" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none" placeholder="Tulis atau paste konten materi di sini..."></textarea>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Link Video YouTube (opsional)</label>
+                <input type="text" id="inputVideoMateri" placeholder="https://www.youtube.com/watch?v=..." class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+              </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+              <button onclick="closeMateriModal()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">Batal</button>
+              <button onclick="saveMateri()" class="flex-1 px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90" style="background: ${config.secondary_color};">Simpan</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function showAddMateriModal() {
+      document.getElementById('materiModal').classList.remove('hidden');
+      document.getElementById('materiModalTitle').textContent = 'Tambah Materi';
+      document.getElementById('editMateriId').value = '';
+      document.getElementById('inputJudulMateri').value = '';
+      document.getElementById('inputKelasMateri').value = '';
+      document.getElementById('inputKontenMateri').value = '';
+      document.getElementById('inputVideoMateri').value = '';
+    }
+
+    function closeMateriModal() {
+      document.getElementById('materiModal').classList.add('hidden');
+    }
+
+    function editMateri(id) {
+      const materi = allData.find(d => d.__backendId === id);
+      if (!materi) return;
+
+      document.getElementById('materiModal').classList.remove('hidden');
+      document.getElementById('materiModalTitle').textContent = 'Edit Materi';
+      document.getElementById('editMateriId').value = id;
+      document.getElementById('inputJudulMateri').value = materi.judul || '';
+      document.getElementById('inputKelasMateri').value = materi.kelas || '';
+      document.getElementById('inputKontenMateri').value = materi.konten || '';
+      document.getElementById('inputVideoMateri').value = materi.video_url || '';
+    }
+
+    async function saveMateri() {
+      const id = document.getElementById('editMateriId').value;
+      const judul = document.getElementById('inputJudulMateri').value.trim();
+      const kelas = document.getElementById('inputKelasMateri').value;
+      const konten = document.getElementById('inputKontenMateri').value.trim();
+      const video_url = document.getElementById('inputVideoMateri').value.trim();
+
+      if (!judul) {
+        showToast('Mohon isi judul materi!', 'error');
+        return;
+      }
+
+      if (allData.length >= 999 && !id) {
+        showToast('Batas maksimum data tercapai!', 'error');
+        return;
+      }
+
+      if (id) {
+        const materi = allData.find(d => d.__backendId === id);
+        if (materi) {
+          const result = await window.dataSdk.update({ ...materi, judul, kelas, konten, video_url });
+          if (result.isOk) {
+            showToast('Materi berhasil diperbarui!', 'success');
+          } else {
+            showToast('Gagal memperbarui materi!', 'error');
+          }
+        }
+      } else {
+        const result = await window.dataSdk.create({
+          type: 'materi',
+          judul,
+          kelas,
+          konten,
+          video_url,
+          created_at: new Date().toISOString()
+        });
+        if (result.isOk) {
+          showToast('Materi berhasil ditambahkan!', 'success');
+        } else {
+          showToast('Gagal menambahkan materi!', 'error');
+        }
+      }
+
+      closeMateriModal();
+    }
+
+    let pendingDeleteMateriId = null;
+
+    function confirmDeleteMateri(id) {
+      pendingDeleteMateriId = id;
+      const materi = allData.find(d => d.__backendId === id);
+      const modal = document.createElement('div');
+      modal.id = 'deleteMateriModal';
+      modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+      modal.innerHTML = `
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center">
+          <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span class="text-3xl">🗑️</span>
+          </div>
+          <h3 class="text-xl font-bold text-slate-800 mb-2">Hapus Materi?</h3>
+          <p class="text-slate-500 mb-6">Yakin ingin menghapus <strong>${materi?.judul || 'materi'}</strong>?</p>
+          <div class="flex gap-3">
+            <button onclick="closeDeleteMateriModal()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">Batal</button>
+            <button onclick="executeDeleteMateri()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-red-500 text-white hover:bg-red-600">Hapus</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    function closeDeleteMateriModal() {
+      const modal = document.getElementById('deleteMateriModal');
+      if (modal) modal.remove();
+      pendingDeleteMateriId = null;
+    }
+
+    async function executeDeleteMateri() {
+      if (!pendingDeleteMateriId) return;
+      const materi = allData.find(d => d.__backendId === pendingDeleteMateriId);
+      if (materi) {
+        const result = await window.dataSdk.delete(materi);
+        if (result.isOk) {
+          showToast('Materi berhasil dihapus!', 'success');
+        } else {
+          showToast('Gagal menghapus materi!', 'error');
+        }
+      }
+      closeDeleteMateriModal();
+    }
+
+    // ==================== TUGAS MANAGEMENT ====================
+    function renderTugasManagement() {
+      const tugasList = getDataByType('tugas');
+      
+      return `
+        <div class="fade-in">
+          <div class="flex items-center justify-between mb-8">
+            <div>
+              <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Kelola Tugas</h1>
+              <p class="text-slate-500 mt-1">Buat dan kelola tugas untuk siswa</p>
+            </div>
+            <button onclick="showAddTugasModal()" class="px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90 hover:shadow-lg" style="background: ${config.secondary_color};">
+              + Tambah Tugas
+            </button>
+          </div>
+
+          <div class="grid gap-6">
+            ${tugasList.length === 0 ? `
+              <div class="bg-white rounded-2xl p-12 text-center shadow-sm border border-slate-100">
+                <span class="text-6xl block mb-4">📝</span>
+                <h3 class="text-xl font-bold text-slate-700 mb-2">Belum Ada Tugas</h3>
+                <p class="text-slate-500">Mulai tambahkan tugas pertama Anda</p>
+              </div>
+            ` : tugasList.map((t, i) => `
+              <div class="card-hover bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                <div class="flex items-start justify-between">
+                  <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-3">
+                      <span class="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold" style="background: #f59e0b;">${i + 1}</span>
+                      <div>
+                        <h3 class="text-lg font-bold text-slate-800">${t.judul}</h3>
+                        <p class="text-sm text-slate-400">Kelas: ${t.kelas || 'Semua'}</p>
+                      </div>
+                    </div>
+                    <p class="text-slate-600 mb-2">${t.konten ? t.konten.substring(0, 150) + '...' : 'Tidak ada deskripsi'}</p>
+                    ${t.deadline ? `<p class="text-sm text-red-500">📅 Deadline: ${new Date(t.deadline).toLocaleDateString('id-ID', { dateStyle: 'long' })}</p>` : ''}
+                  </div>
+                  <div class="flex gap-2 ml-4">
+                    <button onclick="editTugas('${t.__backendId}')" class="p-2 rounded-lg bg-amber-100 text-amber-600 hover:bg-amber-200 transition-colors">✏️</button>
+                    <button onclick="confirmDeleteTugas('${t.__backendId}')" class="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors">🗑️</button>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Modal Tugas -->
+        <div id="tugasModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl">
+            <h3 id="tugasModalTitle" class="text-xl font-bold text-slate-800 mb-4">Tambah Tugas</h3>
+            <input type="hidden" id="editTugasId">
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Judul Tugas</label>
+                <input type="text" id="inputJudulTugas" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-600 mb-2">Kelas</label>
+                  <select id="inputKelasTugas" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+                    <option value="">Semua Kelas</option>
+                    <option value="7A">7A</option>
+                    <option value="7B">7B</option>
+                    <option value="7C">7C</option>
+                    <option value="7D">7D</option>
+                    <option value="7E">7E</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-600 mb-2">Deadline</label>
+                  <input type="datetime-local" id="inputDeadlineTugas" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Deskripsi Tugas</label>
+                <textarea id="inputKontenTugas" rows="6" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none" placeholder="Jelaskan tugas yang harus dikerjakan siswa..."></textarea>
+              </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+              <button onclick="closeTugasModal()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">Batal</button>
+              <button onclick="saveTugas()" class="flex-1 px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90" style="background: ${config.secondary_color};">Simpan</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function showAddTugasModal() {
+      document.getElementById('tugasModal').classList.remove('hidden');
+      document.getElementById('tugasModalTitle').textContent = 'Tambah Tugas';
+      document.getElementById('editTugasId').value = '';
+      document.getElementById('inputJudulTugas').value = '';
+      document.getElementById('inputKelasTugas').value = '';
+      document.getElementById('inputDeadlineTugas').value = '';
+      document.getElementById('inputKontenTugas').value = '';
+    }
+
+    function closeTugasModal() {
+      document.getElementById('tugasModal').classList.add('hidden');
+    }
+
+    function editTugas(id) {
+      const tugas = allData.find(d => d.__backendId === id);
+      if (!tugas) return;
+
+      document.getElementById('tugasModal').classList.remove('hidden');
+      document.getElementById('tugasModalTitle').textContent = 'Edit Tugas';
+      document.getElementById('editTugasId').value = id;
+      document.getElementById('inputJudulTugas').value = tugas.judul || '';
+      document.getElementById('inputKelasTugas').value = tugas.kelas || '';
+      document.getElementById('inputDeadlineTugas').value = tugas.deadline || '';
+      document.getElementById('inputKontenTugas').value = tugas.konten || '';
+    }
+
+    async function saveTugas() {
+      const id = document.getElementById('editTugasId').value;
+      const judul = document.getElementById('inputJudulTugas').value.trim();
+      const kelas = document.getElementById('inputKelasTugas').value;
+      const deadline = document.getElementById('inputDeadlineTugas').value;
+      const konten = document.getElementById('inputKontenTugas').value.trim();
+
+      if (!judul) {
+        showToast('Mohon isi judul tugas!', 'error');
+        return;
+      }
+
+      if (allData.length >= 999 && !id) {
+        showToast('Batas maksimum data tercapai!', 'error');
+        return;
+      }
+
+      if (id) {
+        const tugas = allData.find(d => d.__backendId === id);
+        if (tugas) {
+          const result = await window.dataSdk.update({ ...tugas, judul, kelas, deadline, konten });
+          if (result.isOk) {
+            showToast('Tugas berhasil diperbarui!', 'success');
+          } else {
+            showToast('Gagal memperbarui tugas!', 'error');
+          }
+        }
+      } else {
+        const result = await window.dataSdk.create({
+          type: 'tugas',
+          judul,
+          kelas,
+          deadline,
+          konten,
+          created_at: new Date().toISOString()
+        });
+        if (result.isOk) {
+          showToast('Tugas berhasil ditambahkan!', 'success');
+        } else {
+          showToast('Gagal menambahkan tugas!', 'error');
+        }
+      }
+
+      closeTugasModal();
+    }
+
+    let pendingDeleteTugasId = null;
+
+    function confirmDeleteTugas(id) {
+      pendingDeleteTugasId = id;
+      const tugas = allData.find(d => d.__backendId === id);
+      const modal = document.createElement('div');
+      modal.id = 'deleteTugasModal';
+      modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+      modal.innerHTML = `
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center">
+          <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span class="text-3xl">🗑️</span>
+          </div>
+          <h3 class="text-xl font-bold text-slate-800 mb-2">Hapus Tugas?</h3>
+          <p class="text-slate-500 mb-6">Yakin ingin menghapus <strong>${tugas?.judul || 'tugas'}</strong>?</p>
+          <div class="flex gap-3">
+            <button onclick="closeDeleteTugasModal()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">Batal</button>
+            <button onclick="executeDeleteTugas()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-red-500 text-white hover:bg-red-600">Hapus</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    function closeDeleteTugasModal() {
+      const modal = document.getElementById('deleteTugasModal');
+      if (modal) modal.remove();
+      pendingDeleteTugasId = null;
+    }
+
+    async function executeDeleteTugas() {
+      if (!pendingDeleteTugasId) return;
+      const tugas = allData.find(d => d.__backendId === pendingDeleteTugasId);
+      if (tugas) {
+        const result = await window.dataSdk.delete(tugas);
+        if (result.isOk) {
+          showToast('Tugas berhasil dihapus!', 'success');
+        } else {
+          showToast('Gagal menghapus tugas!', 'error');
+        }
+      }
+      closeDeleteTugasModal();
+    }
+
+    // ==================== KUIS MANAGEMENT ====================
+    function renderKuisManagement() {
+      const kuisList = getDataByType('kuis');
+      
+      return `
+        <div class="fade-in">
+          <div class="flex items-center justify-between mb-8">
+            <div>
+              <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Kelola Kuis</h1>
+              <p class="text-slate-500 mt-1">Buat kuis dengan sistem anti-curang</p>
+            </div>
+            <button onclick="showAddKuisModal()" class="px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90 hover:shadow-lg" style="background: ${config.secondary_color};">
+              + Tambah Kuis
+            </button>
+          </div>
+
+          <div class="grid gap-6">
+            ${kuisList.length === 0 ? `
+              <div class="bg-white rounded-2xl p-12 text-center shadow-sm border border-slate-100">
+                <span class="text-6xl block mb-4">❓</span>
+                <h3 class="text-xl font-bold text-slate-700 mb-2">Belum Ada Kuis</h3>
+                <p class="text-slate-500">Mulai tambahkan kuis pertama Anda</p>
+              </div>
+            ` : kuisList.map((k, i) => `
+              <div class="card-hover bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                <div class="flex items-start justify-between">
+                  <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-3">
+                      <span class="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold" style="background: ${config.accent_color};">${i + 1}</span>
+                      <div>
+                        <h3 class="text-lg font-bold text-slate-800">${k.judul}</h3>
+                        <p class="text-sm text-slate-400">Kelas: ${k.kelas || 'Semua'}</p>
+                      </div>
+                    </div>
+                    <p class="text-slate-600 mb-2">${k.soal ? `${k.soal.split('|').length} Soal` : 'Tidak ada soal'}</p>
+                    ${k.deadline ? `<p class="text-sm text-red-500">📅 Deadline: ${new Date(k.deadline).toLocaleDateString('id-ID', { dateStyle: 'long' })}</p>` : ''}
+                  </div>
+                  <div class="flex gap-2 ml-4">
+                    <button onclick="editKuis('${k.__backendId}')" class="p-2 rounded-lg bg-amber-100 text-amber-600 hover:bg-amber-200 transition-colors">✏️</button>
+                    <button onclick="confirmDeleteKuis('${k.__backendId}')" class="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors">🗑️</button>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Modal Kuis -->
+        <div id="kuisModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl my-8">
+            <h3 id="kuisModalTitle" class="text-xl font-bold text-slate-800 mb-4">Tambah Kuis</h3>
+            <input type="hidden" id="editKuisId">
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Judul Kuis</label>
+                <input type="text" id="inputJudulKuis" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-600 mb-2">Kelas</label>
+                  <select id="inputKelasKuis" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+                    <option value="">Semua Kelas</option>
+                    <option value="7A">7A</option>
+                    <option value="7B">7B</option>
+                    <option value="7C">7C</option>
+                    <option value="7D">7D</option>
+                    <option value="7E">7E</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-600 mb-2">Deadline</label>
+                  <input type="datetime-local" id="inputDeadlineKuis" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Soal Pilihan Ganda</label>
+                <p class="text-xs text-slate-400 mb-2">Format: Pertanyaan;A;B;C;D;Jawaban (pisahkan soal dengan enter)</p>
+                <textarea id="inputSoalKuis" rows="8" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none font-mono text-sm" placeholder="Apa ibu kota Indonesia?;Jakarta;Surabaya;Bandung;Medan;A"></textarea>
+              </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+              <button onclick="closeKuisModal()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">Batal</button>
+              <button onclick="saveKuis()" class="flex-1 px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90" style="background: ${config.secondary_color};">Simpan</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function showAddKuisModal() {
+      document.getElementById('kuisModal').classList.remove('hidden');
+      document.getElementById('kuisModalTitle').textContent = 'Tambah Kuis';
+      document.getElementById('editKuisId').value = '';
+      document.getElementById('inputJudulKuis').value = '';
+      document.getElementById('inputKelasKuis').value = '';
+      document.getElementById('inputDeadlineKuis').value = '';
+      document.getElementById('inputSoalKuis').value = '';
+    }
+
+    function closeKuisModal() {
+      document.getElementById('kuisModal').classList.add('hidden');
+    }
+
+    function editKuis(id) {
+      const kuis = allData.find(d => d.__backendId === id);
+      if (!kuis) return;
+
+      document.getElementById('kuisModal').classList.remove('hidden');
+      document.getElementById('kuisModalTitle').textContent = 'Edit Kuis';
+      document.getElementById('editKuisId').value = id;
+      document.getElementById('inputJudulKuis').value = kuis.judul || '';
+      document.getElementById('inputKelasKuis').value = kuis.kelas || '';
+      document.getElementById('inputDeadlineKuis').value = kuis.deadline || '';
+      document.getElementById('inputSoalKuis').value = kuis.soal ? kuis.soal.replace(/\|/g, '\n') : '';
+    }
+
+    async function saveKuis() {
+      const id = document.getElementById('editKuisId').value;
+      const judul = document.getElementById('inputJudulKuis').value.trim();
+      const kelas = document.getElementById('inputKelasKuis').value;
+      const deadline = document.getElementById('inputDeadlineKuis').value;
+      const soalRaw = document.getElementById('inputSoalKuis').value.trim();
+      const soal = soalRaw.split('\n').filter(s => s.trim()).join('|');
+
+      if (!judul) {
+        showToast('Mohon isi judul kuis!', 'error');
+        return;
+      }
+
+      if (allData.length >= 999 && !id) {
+        showToast('Batas maksimum data tercapai!', 'error');
+        return;
+      }
+
+      if (id) {
+        const kuis = allData.find(d => d.__backendId === id);
+        if (kuis) {
+          const result = await window.dataSdk.update({ ...kuis, judul, kelas, deadline, soal });
+          if (result.isOk) {
+            showToast('Kuis berhasil diperbarui!', 'success');
+          } else {
+            showToast('Gagal memperbarui kuis!', 'error');
+          }
+        }
+      } else {
+        const result = await window.dataSdk.create({
+          type: 'kuis',
+          judul,
+          kelas,
+          deadline,
+          soal,
+          created_at: new Date().toISOString()
+        });
+        if (result.isOk) {
+          showToast('Kuis berhasil ditambahkan!', 'success');
+        } else {
+          showToast('Gagal menambahkan kuis!', 'error');
+        }
+      }
+
+      closeKuisModal();
+    }
+
+    let pendingDeleteKuisId = null;
+
+    function confirmDeleteKuis(id) {
+      pendingDeleteKuisId = id;
+      const kuis = allData.find(d => d.__backendId === id);
+      const modal = document.createElement('div');
+      modal.id = 'deleteKuisModal';
+      modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+      modal.innerHTML = `
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center">
+          <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span class="text-3xl">🗑️</span>
+          </div>
+          <h3 class="text-xl font-bold text-slate-800 mb-2">Hapus Kuis?</h3>
+          <p class="text-slate-500 mb-6">Yakin ingin menghapus <strong>${kuis?.judul || 'kuis'}</strong>?</p>
+          <div class="flex gap-3">
+            <button onclick="closeDeleteKuisModal()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">Batal</button>
+            <button onclick="executeDeleteKuis()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-red-500 text-white hover:bg-red-600">Hapus</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    function closeDeleteKuisModal() {
+      const modal = document.getElementById('deleteKuisModal');
+      if (modal) modal.remove();
+      pendingDeleteKuisId = null;
+    }
+
+    async function executeDeleteKuis() {
+      if (!pendingDeleteKuisId) return;
+      const kuis = allData.find(d => d.__backendId === pendingDeleteKuisId);
+      if (kuis) {
+        const result = await window.dataSdk.delete(kuis);
+        if (result.isOk) {
+          showToast('Kuis berhasil dihapus!', 'success');
+        } else {
+          showToast('Gagal menghapus kuis!', 'error');
+        }
+      }
+      closeDeleteKuisModal();
+    }
+
+    // ==================== PENILAIAN ====================
+    function renderPenilaianContent() {
+      const submisiList = getDataByType('submisi');
+      
+      return `
+        <div class="fade-in">
+          <div class="mb-8">
+            <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Penilaian Tugas</h1>
+            <p class="text-slate-500 mt-1">Nilai dan berikan feedback untuk siswa</p>
+          </div>
+
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            ${submisiList.length === 0 ? `
+              <div class="text-center py-16 text-slate-400">
+                <span class="text-6xl block mb-4">📭</span>
+                <h3 class="text-xl font-semibold mb-2">Belum Ada Kiriman</h3>
+                <p>Siswa belum mengirimkan tugas apapun</p>
+              </div>
+            ` : `
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead style="background: ${config.primary_color};">
+                    <tr>
+                      <th class="text-left px-6 py-4 text-white font-semibold">Siswa</th>
+                      <th class="text-left px-6 py-4 text-white font-semibold">Tugas</th>
+                      <th class="text-left px-6 py-4 text-white font-semibold">Jawaban</th>
+                      <th class="text-left px-6 py-4 text-white font-semibold">Nilai</th>
+                      <th class="text-left px-6 py-4 text-white font-semibold">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${submisiList.map(s => `
+                      <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td class="px-6 py-4">
+                          <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+                              ${(s.nama_siswa || 'S')[0].toUpperCase()}
+                            </div>
+                            <div>
+                              <p class="font-medium text-slate-800">${s.nama_siswa || 'Siswa'}</p>
+                              <p class="text-sm text-slate-400">${s.kelas || '-'}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td class="px-6 py-4 text-slate-600">${s.judul_tugas || 'Tugas'}</td>
+                        <td class="px-6 py-4">
+                          <p class="text-slate-600 max-w-xs truncate">${s.jawaban_siswa || '-'}</p>
+                        </td>
+                        <td class="px-6 py-4">
+                          ${s.nilai ? `
+                            <span class="px-3 py-1 bg-green-100 text-green-600 rounded-full font-semibold">${s.nilai}</span>
+                          ` : `
+                            <span class="px-3 py-1 bg-amber-100 text-amber-600 rounded-full text-sm">Belum dinilai</span>
+                          `}
+                        </td>
+                        <td class="px-6 py-4">
+                          <button onclick="showNilaiModal('${s.__backendId}')" class="px-4 py-2 rounded-lg font-semibold text-white transition-all hover:opacity-90" style="background: ${config.secondary_color};">
+                            ${s.nilai ? 'Edit Nilai' : 'Beri Nilai'}
+                          </button>
+                        </td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+          </div>
+        </div>
+
+        <!-- Modal Nilai -->
+        <div id="nilaiModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h3 class="text-xl font-bold text-slate-800 mb-4">Beri Nilai</h3>
+            <input type="hidden" id="nilaiSubmisiId">
+            <div id="nilaiDetailSiswa" class="mb-4 p-4 bg-slate-50 rounded-xl"></div>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Nilai (0-100)</label>
+                <input type="number" id="inputNilai" min="0" max="100" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none text-2xl font-bold text-center">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Komentar/Feedback</label>
+                <textarea id="inputKomentar" rows="3" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none" placeholder="Berikan feedback untuk siswa..."></textarea>
+              </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+              <button onclick="closeNilaiModal()" class="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">Batal</button>
+              <button onclick="saveNilai()" class="flex-1 px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90" style="background: ${config.accent_color};">Simpan Nilai</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function showNilaiModal(id) {
+      const submisi = allData.find(d => d.__backendId === id);
+      if (!submisi) return;
+
+      document.getElementById('nilaiModal').classList.remove('hidden');
+      document.getElementById('nilaiSubmisiId').value = id;
+      document.getElementById('nilaiDetailSiswa').innerHTML = `
+        <p class="font-semibold text-slate-800">${submisi.nama_siswa || 'Siswa'} - ${submisi.kelas || ''}</p>
+        <p class="text-sm text-slate-500">${submisi.judul_tugas || 'Tugas'}</p>
+        <p class="text-sm text-slate-600 mt-2">${submisi.jawaban_siswa || 'Tidak ada jawaban'}</p>
+      `;
+      document.getElementById('inputNilai').value = submisi.nilai || '';
+      document.getElementById('inputKomentar').value = submisi.komentar_guru || '';
+    }
+
+    function closeNilaiModal() {
+      document.getElementById('nilaiModal').classList.add('hidden');
+    }
+
+    async function saveNilai() {
+      const id = document.getElementById('nilaiSubmisiId').value;
+      const nilai = document.getElementById('inputNilai').value;
+      const komentar_guru = document.getElementById('inputKomentar').value.trim();
+
+      if (!nilai || nilai < 0 || nilai > 100) {
+        showToast('Masukkan nilai antara 0-100!', 'error');
+        return;
+      }
+
+      const submisi = allData.find(d => d.__backendId === id);
+      if (submisi) {
+        const result = await window.dataSdk.update({ ...submisi, nilai, komentar_guru });
+        if (result.isOk) {
+          showToast('Nilai berhasil disimpan!', 'success');
+        } else {
+          showToast('Gagal menyimpan nilai!', 'error');
+        }
+      }
+
+      closeNilaiModal();
+    }
+
+    // ==================== REKAP NILAI ====================
+    function renderRekapNilai() {
+      const submisiList = getDataByType('submisi').filter(s => s.nilai);
+      const kuisResultList = getDataByType('kuis_result').filter(r => r.nilai);
+      
+      return `
+        <div class="fade-in">
+          <div class="mb-8">
+            <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Rekap Nilai</h1>
+            <p class="text-slate-500 mt-1">Lihat semua nilai tugas dan kuis siswa</p>
+          </div>
+
+          <div class="grid gap-6">
+            <!-- Nilai Tugas -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h2 class="text-xl font-bold text-slate-800 mb-4">📝 Nilai Tugas</h2>
+              ${submisiList.length === 0 ? `
+                <p class="text-slate-400 text-center py-8">Belum ada nilai tugas</p>
+              ` : `
+                <div class="overflow-x-auto">
+                  <table class="w-full">
+                    <thead class="bg-slate-50">
+                      <tr>
+                        <th class="text-left px-4 py-3 text-slate-600 font-semibold">Siswa</th>
+                        <th class="text-left px-4 py-3 text-slate-600 font-semibold">Kelas</th>
+                        <th class="text-left px-4 py-3 text-slate-600 font-semibold">Tugas</th>
+                        <th class="text-left px-4 py-3 text-slate-600 font-semibold">Nilai</th>
+                        <th class="text-left px-4 py-3 text-slate-600 font-semibold">Feedback</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${submisiList.map(s => `
+                        <tr class="border-b border-slate-100">
+                          <td class="px-4 py-3 font-medium text-slate-800">${s.nama_siswa}</td>
+                          <td class="px-4 py-3 text-slate-600">${s.kelas}</td>
+                          <td class="px-4 py-3 text-slate-600">${s.judul_tugas}</td>
+                          <td class="px-4 py-3"><span class="px-3 py-1 bg-green-100 text-green-600 rounded-full font-bold">${s.nilai}</span></td>
+                          <td class="px-4 py-3 text-slate-500 text-sm">${s.komentar_guru || '-'}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `}
+            </div>
+
+            <!-- Nilai Kuis -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h2 class="text-xl font-bold text-slate-800 mb-4">❓ Nilai Kuis</h2>
+              ${kuisResultList.length === 0 ? `
+                <p class="text-slate-400 text-center py-8">Belum ada nilai kuis</p>
+              ` : `
+                <div class="overflow-x-auto">
+                  <table class="w-full">
+                    <thead class="bg-slate-50">
+                      <tr>
+                        <th class="text-left px-4 py-3 text-slate-600 font-semibold">Siswa</th>
+                        <th class="text-left px-4 py-3 text-slate-600 font-semibold">Kelas</th>
+                        <th class="text-left px-4 py-3 text-slate-600 font-semibold">Kuis</th>
+                        <th class="text-left px-4 py-3 text-slate-600 font-semibold">Nilai</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${kuisResultList.map(r => `
+                        <tr class="border-b border-slate-100">
+                          <td class="px-4 py-3 font-medium text-slate-800">${r.nama_siswa}</td>
+                          <td class="px-4 py-3 text-slate-600">${r.kelas}</td>
+                          <td class="px-4 py-3 text-slate-600">${r.judul_kuis}</td>
+                          <td class="px-4 py-3"><span class="px-3 py-1 bg-blue-100 text-blue-600 rounded-full font-bold">${r.nilai}</span></td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ==================== SISWA DASHBOARD ====================
+    function renderSiswaDashboard() {
+      const app = document.getElementById('app');
+      const user = appState.currentUser;
+
+      const menuItems = [
+        { id: 'profil', icon: '👤', label: 'Profil Saya' },
+        { id: 'materi', icon: '📚', label: 'Materi IPS' },
+        { id: 'tugas', icon: '📝', label: 'Tugas' },
+        { id: 'kuis', icon: '❓', label: 'Kuis' },
+        { id: 'nilai', icon: '📊', label: 'Hasil Belajar' }
+      ];
+
+      app.innerHTML = `
+        <div class="flex h-full w-full">
+          <!-- Sidebar -->
+          <aside class="w-64 h-full flex-shrink-0 text-white flex flex-col" style="background: linear-gradient(180deg, ${config.primary_color} 0%, #0f172a 100%);">
+            <div class="p-6 border-b border-white/10">
+              <div class="flex items-center gap-3">
+                <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                  <span class="text-2xl">👨‍🎓</span>
+                </div>
+                <div>
+                  <h2 class="font-bold">${user.nama}</h2>
+                  <p class="text-sm text-white/60">Kelas ${user.kelas}</p>
+                </div>
+              </div>
+            </div>
+            
+            <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+              ${menuItems.map(item => `
+                <button onclick="navigateTo('${item.id}')" class="sidebar-menu w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${appState.currentPage === item.id ? 'active text-white' : 'text-white/70 hover:bg-white/10'}">
+                  <span class="text-xl">${item.icon}</span>
+                  <span class="font-medium">${item.label}</span>
+                </button>
+              `).join('')}
+            </nav>
+
+            <div class="p-4 border-t border-white/10">
+              <button onclick="logout()" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:bg-red-500/20 hover:text-red-300 transition-all">
+                <span class="text-xl">🚪</span>
+                <span class="font-medium">Keluar</span>
+              </button>
+            </div>
+          </aside>
+
+          <!-- Main Content -->
+          <main class="flex-1 h-full overflow-y-auto" style="background-color: ${config.bg_color};">
+            <div id="mainContent" class="p-8">
+              ${renderSiswaContent()}
+            </div>
+          </main>
+        </div>
+      `;
+    }
+
+    function renderSiswaContent() {
+      switch(appState.currentPage) {
+        case 'profil': return renderProfilSiswa();
+        case 'materi': return renderMateriSiswa();
+        case 'tugas': return renderTugasSiswa();
+        case 'kuis': return renderKuisSiswa();
+        case 'nilai': return renderNilaiSiswa();
+        default: return renderProfilSiswa();
+      }
+    }
+
+    function renderProfilSiswa() {
+      const user = appState.currentUser;
+      const materiList = getDataByType('materi').filter(m => !m.kelas || m.kelas === user.kelas);
+      const completedMateri = user.materi_selesai ? user.materi_selesai.split(',').filter(m => m).length : 0;
+      const progress = materiList.length > 0 ? Math.round((completedMateri / materiList.length) * 100) : 0;
+
+      const tugasList = getDataByType('tugas').filter(t => !t.kelas || t.kelas === user.kelas);
+      const submisiList = getDataByType('submisi').filter(s => s.id_siswa === user.__backendId);
+      const tugasBelumSelesai = tugasList.filter(t => !submisiList.find(s => s.id_tugas === t.__backendId));
+
+      return `
+        <div class="fade-in">
+          <div class="mb-8">
+            <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Profil Saya</h1>
+            <p class="text-slate-500 mt-1">Selamat datang kembali, ${user.nama}!</p>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Profile Card -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
+              <div class="w-24 h-24 mx-auto rounded-full flex items-center justify-center text-4xl mb-4" style="background: ${config.secondary_color}20;">
+                👨‍🎓
+              </div>
+              <h2 class="text-xl font-bold text-slate-800">${user.nama}</h2>
+              <p class="text-slate-500">Kelas ${user.kelas} • No. Absen ${user.absen}</p>
+            </div>
+
+            <!-- Progress Card -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h3 class="font-bold text-slate-800 mb-4">�� Progress Belajar</h3>
+              <div class="flex items-center justify-center mb-4">
+                <div class="relative w-32 h-32">
+                  <svg class="w-32 h-32 transform -rotate-90">
+                    <circle cx="64" cy="64" r="56" stroke="#e2e8f0" stroke-width="12" fill="none"/>
+                    <circle cx="64" cy="64" r="56" stroke="${config.accent_color}" stroke-width="12" fill="none" 
+                      stroke-dasharray="${2 * Math.PI * 56}" 
+                      stroke-dashoffset="${2 * Math.PI * 56 * (1 - progress / 100)}"
+                      class="progress-ring"/>
+                  </svg>
+                  <div class="absolute inset-0 flex items-center justify-center">
+                    <span class="text-3xl font-bold" style="color: ${config.accent_color};">${progress}%</span>
+                  </div>
+                </div>
+              </div>
+              <p class="text-center text-slate-500">${completedMateri} dari ${materiList.length} materi selesai</p>
+            </div>
+
+            <!-- Tasks Card -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h3 class="font-bold text-slate-800 mb-4">⏳ Tugas Belum Selesai</h3>
+              ${tugasBelumSelesai.length === 0 ? `
+                <div class="text-center py-4 text-slate-400">
+                  <span class="text-3xl block mb-2">🎉</span>
+                  <p>Semua tugas sudah selesai!</p>
+                </div>
+              ` : `
+                <div class="space-y-3">
+                  ${tugasBelumSelesai.slice(0, 3).map(t => `
+                    <div class="p-3 bg-amber-50 rounded-xl border border-amber-100">
+                      <p class="font-medium text-slate-700">${t.judul}</p>
+                      ${t.deadline ? `<p class="text-xs text-red-500">📅 ${new Date(t.deadline).toLocaleDateString('id-ID')}</p>` : ''}
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderMateriSiswa() {
+      const user = appState.currentUser;
+      const materiList = getDataByType('materi').filter(m => !m.kelas || m.kelas === user.kelas);
+      const completedIds = user.materi_selesai ? user.materi_selesai.split(',') : [];
+
+      return `
+        <div class="fade-in">
+          <div class="mb-8">
+            <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Materi IPS</h1>
+            <p class="text-slate-500 mt-1">Pelajari materi secara berurutan</p>
+          </div>
+
+          <div class="grid gap-6">
+            ${materiList.length === 0 ? `
+              <div class="bg-white rounded-2xl p-12 text-center shadow-sm border border-slate-100">
+                <span class="text-6xl block mb-4">📚</span>
+                <h3 class="text-xl font-bold text-slate-700 mb-2">Belum Ada Materi</h3>
+                <p class="text-slate-500">Guru belum menambahkan materi untuk kelas Anda</p>
+              </div>
+            ` : materiList.map((m, i) => {
+              const isCompleted = completedIds.includes(m.__backendId);
+              const isLocked = i > 0 && !completedIds.includes(materiList[i-1].__backendId);
+              
+              return `
+                <div class="card-hover bg-white rounded-2xl p-6 shadow-sm border border-slate-100 ${isLocked ? 'opacity-60' : ''}">
+                  <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0" style="background: ${isCompleted ? config.accent_color : isLocked ? '#94a3b8' : config.secondary_color};">
+                      ${isCompleted ? '✓' : isLocked ? '����' : i + 1}
+                    </div>
+                    <div class="flex-1">
+                      <h3 class="text-lg font-bold text-slate-800 mb-2">${m.judul}</h3>
+                      ${!isLocked ? `
+                        <div class="prose prose-slate max-w-none mb-4">
+                          <p class="text-slate-600 whitespace-pre-line">${m.konten || 'Tidak ada konten'}</p>
+                        </div>
+                        ${m.video_url ? `
+                          <div class="mb-4 rounded-xl overflow-hidden">
+                            <iframe 
+                              width="100%" 
+                              height="315" 
+                              src="${getYouTubeEmbedUrl(m.video_url)}" 
+                              frameborder="0" 
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                              allowfullscreen
+                              class="rounded-xl"
+                            ></iframe>
+                          </div>
+                        ` : ''}
+                        <button onclick="toggleMateriComplete('${m.__backendId}')" class="px-6 py-3 rounded-xl font-semibold transition-all ${isCompleted ? 'bg-green-100 text-green-600' : 'text-white'}" style="${!isCompleted ? `background: ${config.accent_color}` : ''}">
+                          ${isCompleted ? '✓ Selesai Dibaca' : 'Tandai Selesai'}
+                        </button>
+                      ` : `
+                        <p class="text-slate-400">🔒 Selesaikan materi sebelumnya untuk membuka</p>
+                      `}
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function getYouTubeEmbedUrl(url) {
+      const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
+      return match ? `https://www.youtube.com/embed/${match[1]}` : url;
+    }
+
+    async function toggleMateriComplete(materiId) {
+      const user = appState.currentUser;
+      let completedIds = user.materi_selesai ? user.materi_selesai.split(',').filter(id => id) : [];
+      
+      if (completedIds.includes(materiId)) {
+        completedIds = completedIds.filter(id => id !== materiId);
+      } else {
+        completedIds.push(materiId);
+      }
+
+      const updatedUser = { ...user, materi_selesai: completedIds.join(',') };
+      const result = await window.dataSdk.update(updatedUser);
+      
+      if (result.isOk) {
+        appState.currentUser = updatedUser;
+        showToast('Progress berhasil diperbarui!', 'success');
+      } else {
+        showToast('Gagal memperbarui progress!', 'error');
+      }
+    }
+
+    function renderTugasSiswa() {
+      const user = appState.currentUser;
+      const tugasList = getDataByType('tugas').filter(t => !t.kelas || t.kelas === user.kelas);
+      const submisiList = getDataByType('submisi').filter(s => s.id_siswa === user.__backendId);
+
+      return `
+        <div class="fade-in">
+          <div class="mb-8">
+            <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Tugas</h1>
+            <p class="text-slate-500 mt-1">Kerjakan tugas sesuai deadline</p>
+          </div>
+
+          <div class="grid gap-6">
+            ${tugasList.length === 0 ? `
+              <div class="bg-white rounded-2xl p-12 text-center shadow-sm border border-slate-100">
+                <span class="text-6xl block mb-4">📝</span>
+                <h3 class="text-xl font-bold text-slate-700 mb-2">Belum Ada Tugas</h3>
+                <p class="text-slate-500">Guru belum memberikan tugas</p>
+              </div>
+            ` : tugasList.map(t => {
+              const submisi = submisiList.find(s => s.id_tugas === t.__backendId);
+              const isExpired = t.deadline && new Date(t.deadline) < new Date();
+              
+              return `
+                <div class="card-hover bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                  <div class="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 class="text-lg font-bold text-slate-800">${t.judul}</h3>
+                      ${t.deadline ? `
+                        <p class="text-sm ${isExpired ? 'text-red-500' : 'text-amber-500'}">
+                          📅 Deadline: ${new Date(t.deadline).toLocaleDateString('id-ID', { dateStyle: 'full' })}
+                          ${isExpired ? ' (Sudah lewat)' : ''}
+                        </p>
+                      ` : ''}
+                    </div>
+                    ${submisi ? `
+                      <span class="px-3 py-1 rounded-full text-sm font-medium ${submisi.nilai ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}">
+                        ${submisi.nilai ? `Nilai: ${submisi.nilai}` : 'Terkirim'}
+                      </span>
+                    ` : ''}
+                  </div>
+                  
+                  <p class="text-slate-600 mb-4 whitespace-pre-line">${t.konten || 'Tidak ada deskripsi'}</p>
+
+                  ${!submisi && !isExpired ? `
+                    <div class="mt-4 pt-4 border-t border-slate-100">
+                      <label class="block text-sm font-medium text-slate-600 mb-2">Jawaban Anda</label>
+                      <textarea id="jawaban-${t.__backendId}" rows="4" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none mb-3" placeholder="Tulis jawaban atau link tugas Anda..."></textarea>
+                      <button onclick="submitTugas('${t.__backendId}', '${t.judul}')" class="px-6 py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90" style="background: ${config.secondary_color};">
+                        Kirim Tugas
+                      </button>
+                    </div>
+                  ` : submisi ? `
+                    <div class="mt-4 pt-4 border-t border-slate-100">
+                      <p class="text-sm text-slate-500 mb-2">Jawaban Anda:</p>
+                      <p class="text-slate-700 bg-slate-50 p-3 rounded-xl">${submisi.jawaban_siswa}</p>
+                      ${submisi.komentar_guru ? `
+                        <div class="mt-3 p-3 bg-blue-50 rounded-xl">
+                          <p class="text-sm font-medium text-blue-800">💬 Feedback Guru:</p>
+                          <p class="text-blue-600">${submisi.komentar_guru}</p>
+                        </div>
+                      ` : ''}
+                    </div>
+                  ` : `
+                    <p class="text-red-500 text-sm mt-4">⚠️ Deadline sudah lewat</p>
+                  `}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    async function submitTugas(tugasId, tugasJudul) {
+      const jawaban = document.getElementById(`jawaban-${tugasId}`).value.trim();
+      if (!jawaban) {
+        showToast('Mohon isi jawaban tugas!', 'error');
+        return;
+      }
+
+      const user = appState.currentUser;
+      
+      // Cek apakah sudah ada submisi untuk tugas ini dari siswa ini
+      const existingSubmisi = getDataByType('submisi').find(s => 
+        s.id_tugas === tugasId && s.id_siswa === user.__backendId
+      );
+
+      if (existingSubmisi) {
+        showToast('Anda sudah mengirim tugas ini sebelumnya!', 'warning');
+        return;
+      }
+
+      if (allData.length >= 999) {
+        showToast('Batas maksimum data tercapai!', 'error');
+        return;
+      }
+
+      const button = event.target;
+      const originalText = button.textContent;
+      button.textContent = '⏳ Mengirim...';
+      button.disabled = true;
+
+      const result = await window.dataSdk.create({
+        type: 'submisi',
+        id_tugas: tugasId,
+        judul_tugas: tugasJudul,
+        id_siswa: user.__backendId,
+        nama_siswa: user.nama,
+        kelas: user.kelas,
+        jawaban_siswa: jawaban,
+        waktu_kirim: new Date().toISOString(),
+        nilai: '',
+        komentar_guru: ''
+      });
+
+      button.textContent = originalText;
+      button.disabled = false;
+
+      if (result.isOk) {
+        showToast('Tugas berhasil dikirim!', 'success');
+      } else {
+        showToast('Gagal mengirim tugas!', 'error');
+      }
+    }
+
+    // ==================== KUIS SISWA ====================
+    let kuisState = {
+      currentKuis: null,
+      currentSoalIndex: 0,
+      answers: {},
+      startTime: null
+    };
+
+    function renderKuisSiswa() {
+      const user = appState.currentUser;
+      const kuisList = getDataByType('kuis').filter(k => !k.kelas || k.kelas === user.kelas);
+      const kuisResults = getDataByType('kuis_result').filter(r => r.id_siswa === user.__backendId);
+
+      if (kuisState.currentKuis) {
+        return renderKuisActive();
+      }
+
+      return `
+        <div class="fade-in">
+          <div class="mb-8">
+            <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Kuis</h1>
+            <p class="text-slate-500 mt-1">Kerjakan kuis dengan teliti</p>
+          </div>
+
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+            <p class="text-amber-800 font-medium">⚠️ Perhatian: Jangan berpindah tab saat mengerjakan kuis!</p>
+            <p class="text-amber-600 text-sm">Sistem akan mendeteksi jika Anda keluar dari halaman kuis.</p>
+          </div>
+
+          <div class="grid gap-6">
+            ${kuisList.length === 0 ? `
+              <div class="bg-white rounded-2xl p-12 text-center shadow-sm border border-slate-100">
+                <span class="text-6xl block mb-4">❓</span>
+                <h3 class="text-xl font-bold text-slate-700 mb-2">Belum Ada Kuis</h3>
+                <p class="text-slate-500">Guru belum memberikan kuis</p>
+              </div>
+            ` : kuisList.map(k => {
+              const result = kuisResults.find(r => r.id_kuis === k.__backendId);
+              const isExpired = k.deadline && new Date(k.deadline) < new Date();
+              const soalCount = k.soal ? k.soal.split('|').length : 0;
+              
+              return `
+                <div class="card-hover bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                  <div class="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 class="text-lg font-bold text-slate-800">${k.judul}</h3>
+                      <p class="text-slate-500">${soalCount} Soal</p>
+                      ${k.deadline ? `
+                        <p class="text-sm ${isExpired ? 'text-red-500' : 'text-amber-500'}">
+                          📅 Deadline: ${new Date(k.deadline).toLocaleDateString('id-ID')}
+                        </p>
+                      ` : ''}
+                    </div>
+                    ${result ? `
+                      <span class="px-4 py-2 rounded-full text-lg font-bold bg-green-100 text-green-600">
+                        Nilai: ${result.nilai}
+                      </span>
+                    ` : ''}
+                  </div>
+
+                  ${!result && !isExpired ? `
+                    <button onclick="startKuis('${k.__backendId}')" class="w-full py-4 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background: ${config.accent_color};">
+                      Mulai Kuis
+                    </button>
+                  ` : result ? `
+                    <div class="p-4 bg-green-50 rounded-xl">
+                      <p class="text-green-700">✅ Kuis sudah dikerjakan</p>
+                    </div>
+                  ` : `
+                    <p class="text-red-500">⚠️ Deadline sudah lewat</p>
+                  `}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function startKuis(kuisId) {
+      const kuis = allData.find(d => d.__backendId === kuisId);
+      if (!kuis || !kuis.soal) {
+        showToast('Kuis tidak valid!', 'error');
+        return;
+      }
+
+      kuisState = {
+        currentKuis: kuis,
+        currentSoalIndex: 0,
+        answers: {},
+        startTime: Date.now()
+      };
+
+      // Setup anti-cheat
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      renderApp();
+    }
+
+    function handleVisibilityChange() {
+      if (document.hidden && kuisState.currentKuis) {
+        appState.tabSwitchCount++;
+        if (appState.tabSwitchCount >= 3) {
+          endKuisWithPenalty();
+        } else {
+          appState.quizLocked = true;
+          appState.lockCountdown = 30;
+          startLockCountdown();
+          showToast(`⚠️ Peringatan ${appState.tabSwitchCount}/3! Jangan berpindah tab!`, 'warning');
+        }
+      }
+    }
+
+    function startLockCountdown() {
+      const interval = setInterval(() => {
+        appState.lockCountdown--;
+        if (appState.lockCountdown <= 0) {
+          appState.quizLocked = false;
+          clearInterval(interval);
+          renderApp();
+        } else {
+          const lockOverlay = document.getElementById('lockOverlay');
+          if (lockOverlay) {
+            lockOverlay.querySelector('.countdown-text').textContent = appState.lockCountdown;
+          }
+        }
+      }, 1000);
+    }
+
+    async function endKuisWithPenalty() {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      
+      const user = appState.currentUser;
+      const kuis = kuisState.currentKuis;
+
+      if (allData.length < 999) {
+        await window.dataSdk.create({
+          type: 'kuis_result',
+          id_kuis: kuis.__backendId,
+          judul_kuis: kuis.judul,
+          id_siswa: user.__backendId,
+          nama_siswa: user.nama,
+          kelas: user.kelas,
+          nilai: '0',
+          status: 'disqualified',
+          created_at: new Date().toISOString()
+        });
+      }
+
+      kuisState = { currentKuis: null, currentSoalIndex: 0, answers: {}, startTime: null };
+      appState.quizLocked = false;
+      appState.tabSwitchCount = 0;
+      
+      showToast('Kuis dibatalkan karena terlalu sering berpindah tab!', 'error');
+      renderApp();
+    }
+
+    function renderKuisActive() {
+      const kuis = kuisState.currentKuis;
+      const soalList = kuis.soal.split('|');
+      const currentSoal = soalList[kuisState.currentSoalIndex];
+      const parts = currentSoal.split(';');
+      const question = parts[0];
+      const options = parts.slice(1, 5);
+      const totalSoal = soalList.length;
+
+      return `
+        <div class="fade-in ${appState.quizLocked ? 'quiz-locked' : ''}">
+          ${appState.quizLocked ? `
+            <div id="lockOverlay" class="fixed inset-0 bg-red-900/90 flex items-center justify-center z-50">
+              <div class="text-center text-white">
+                <span class="text-6xl block mb-4">🔒</span>
+                <h2 class="text-2xl font-bold mb-2">Kuis Dikunci!</h2>
+                <p class="mb-4">Anda terdeteksi berpindah tab</p>
+                <p class="text-6xl font-bold countdown-text">${appState.lockCountdown}</p>
+                <p class="mt-2">detik untuk melanjutkan</p>
+              </div>
+            </div>
+          ` : ''}
+
+          <div class="mb-8">
+            <div class="flex items-center justify-between">
+              <div>
+                <h1 class="text-2xl font-bold" style="color: ${config.text_color};">${kuis.judul}</h1>
+                <p class="text-slate-500">Soal ${kuisState.currentSoalIndex + 1} dari ${totalSoal}</p>
+              </div>
+              <div class="text-right">
+                <p class="text-sm text-slate-500">Peringatan</p>
+                <p class="text-xl font-bold ${appState.tabSwitchCount > 0 ? 'text-red-500' : 'text-green-500'}">${appState.tabSwitchCount}/3</p>
+              </div>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="mt-4 h-3 bg-slate-200 rounded-full overflow-hidden">
+              <div class="h-full transition-all duration-300" style="width: ${((kuisState.currentSoalIndex + 1) / totalSoal) * 100}%; background: ${config.accent_color};"></div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-8 shadow-sm border border-slate-100">
+            <h2 class="text-xl font-bold text-slate-800 mb-6">${question}</h2>
+            
+            <div class="space-y-4">
+              ${options.map((opt, i) => {
+                const letter = String.fromCharCode(65 + i);
+                const isSelected = kuisState.answers[kuisState.currentSoalIndex] === letter;
+                return `
+                  <button onclick="selectAnswer('${letter}')" class="w-full p-4 rounded-xl border-2 text-left transition-all ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-full mr-3 font-bold ${isSelected ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600'}">${letter}</span>
+                    <span class="text-slate-700">${opt}</span>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+
+            <div class="flex gap-4 mt-8">
+              ${kuisState.currentSoalIndex > 0 ? `
+                <button onclick="prevSoal()" class="flex-1 py-4 rounded-xl font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+                  ← Sebelumnya
+                </button>
+              ` : ''}
+              ${kuisState.currentSoalIndex < totalSoal - 1 ? `
+                <button onclick="nextSoal()" class="flex-1 py-4 rounded-xl font-semibold text-white transition-all hover:opacity-90" style="background: ${config.secondary_color};">
+                  Selanjutnya →
+                </button>
+              ` : `
+                <button onclick="submitKuis()" class="flex-1 py-4 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background: ${config.accent_color};">
+                  Selesai & Kirim
+                </button>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function selectAnswer(letter) {
+      kuisState.answers[kuisState.currentSoalIndex] = letter;
+      renderApp();
+    }
+
+    function prevSoal() {
+      if (kuisState.currentSoalIndex > 0) {
+        kuisState.currentSoalIndex--;
+        renderApp();
+      }
+    }
+
+    function nextSoal() {
+      const kuis = kuisState.currentKuis;
+      const soalList = kuis.soal.split('|');
+      if (kuisState.currentSoalIndex < soalList.length - 1) {
+        kuisState.currentSoalIndex++;
+        renderApp();
+      }
+    }
+
+    async function submitKuis() {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+
+      const kuis = kuisState.currentKuis;
+      const soalList = kuis.soal.split('|');
+      let correct = 0;
+
+      soalList.forEach((soal, i) => {
+        const parts = soal.split(';');
+        const correctAnswer = parts[5];
+        if (kuisState.answers[i] === correctAnswer) {
+          correct++;
+        }
+      });
+
+      const nilai = Math.round((correct / soalList.length) * 100);
+      const user = appState.currentUser;
+
+      if (allData.length < 999) {
+        const result = await window.dataSdk.create({
+          type: 'kuis_result',
+          id_kuis: kuis.__backendId,
+          judul_kuis: kuis.judul,
+          id_siswa: user.__backendId,
+          nama_siswa: user.nama,
+          kelas: user.kelas,
+          nilai: nilai.toString(),
+          status: 'completed',
+          created_at: new Date().toISOString()
+        });
+
+        if (result.isOk) {
+          showToast(`Kuis selesai! Nilai Anda: ${nilai}`, 'success');
+        }
+      }
+
+      kuisState = { currentKuis: null, currentSoalIndex: 0, answers: {}, startTime: null };
+      appState.tabSwitchCount = 0;
+      renderApp();
+    }
+
+    function renderNilaiSiswa() {
+      const user = appState.currentUser;
+      const submisiList = getDataByType('submisi').filter(s => s.id_siswa === user.__backendId && s.nilai);
+      const kuisResults = getDataByType('kuis_result').filter(r => r.id_siswa === user.__backendId);
+
+      return `
+        <div class="fade-in">
+          <div class="mb-8">
+            <h1 class="text-3xl font-bold" style="color: ${config.text_color};">Hasil Belajar</h1>
+            <p class="text-slate-500 mt-1">Lihat nilai tugas dan kuis Anda</p>
+          </div>
+
+          <div class="grid gap-6">
+            <!-- Nilai Tugas -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h2 class="text-xl font-bold text-slate-800 mb-4">📝 Nilai Tugas</h2>
+              ${submisiList.length === 0 ? `
+                <p class="text-slate-400 text-center py-8">Belum ada nilai tugas</p>
+              ` : `
+                <div class="space-y-4">
+                  ${submisiList.map(s => `
+                    <div class="p-4 bg-slate-50 rounded-xl">
+                      <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-semibold text-slate-800">${s.judul_tugas}</h3>
+                        <span class="px-4 py-2 rounded-full font-bold text-lg ${parseInt(s.nilai) >= 75 ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}">${s.nilai}</span>
+                      </div>
+                      ${s.komentar_guru ? `
+                        <div class="p-3 bg-blue-50 rounded-lg mt-2">
+                          <p class="text-sm font-medium text-blue-800">💬 Feedback Guru:</p>
+                          <p class="text-blue-600">${s.komentar_guru}</p>
+                        </div>
+                      ` : ''}
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+            </div>
+
+            <!-- Nilai Kuis -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h2 class="text-xl font-bold text-slate-800 mb-4">❓ Nilai Kuis</h2>
+              ${kuisResults.length === 0 ? `
+                <p class="text-slate-400 text-center py-8">Belum ada nilai kuis</p>
+              ` : `
+                <div class="space-y-4">
+                  ${kuisResults.map(r => `
+                    <div class="p-4 bg-slate-50 rounded-xl flex items-center justify-between">
+                      <div>
+                        <h3 class="font-semibold text-slate-800">${r.judul_kuis}</h3>
+                        <p class="text-sm text-slate-500">${new Date(r.created_at).toLocaleDateString('id-ID')}</p>
+                      </div>
+                      <span class="px-4 py-2 rounded-full font-bold text-lg ${parseInt(r.nilai) >= 75 ? 'bg-green-100 text-green-600' : r.status === 'disqualified' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}">
+                        ${r.status === 'disqualified' ? 'DQ' : r.nilai}
+                      </span>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ==================== NAVIGATION ====================
+    function navigateTo(page) {
+      appState.currentPage = page;
+      renderApp();
+    }
+
+    // ==================== INIT ====================
+    initApp();
+  </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9c9768e6a5a46d09',t:'MTc3MDM0Njk1OC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
