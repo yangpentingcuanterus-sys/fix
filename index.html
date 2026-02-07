@@ -300,7 +300,7 @@
        </div>
        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <h3 class="text-lg font-bold text-gray-800 mb-4">Daftar Siswa</h3><!-- Filter -->
-        <div class="flex gap-4 mb-4"><select id="filter-kelas" onchange="filterSiswa()" class="px-4 py-2 rounded-lg border border-gray-200 focus:border-violet-500"> <option value="">Semua Kelas</option> <option value="7E">7E</option> <option value="7F">7F</option> <option value="7G">7G</option> </select> <input type="text" id="search-siswa" onkeyup="filterSiswa()" placeholder="Cari nama siswa..." class="flex-1 px-4 py-2 rounded-lg border border-gray-200 focus:border-violet-500">
+        <div class="flex gap-4 mb-4"><select id="filter-kelas" onchange="filterSiswa()" class="px-4 py-2 rounded-lg border border-gray-200"> <option value="">Semua Kelas</option> <option value="7E">7E</option> <option value="7F">7F</option> <option value="7G">7G</option> </select> <input type="text" id="search-siswa" onkeyup="filterSiswa()" placeholder="Cari nama siswa..." class="flex-1 px-4 py-2 rounded-lg border border-gray-200 focus:border-violet-500">
         </div><!-- Table -->
         <div class="overflow-x-auto">
          <table class="w-full">
@@ -651,12 +651,13 @@
    </div>
   </div>
   <script>
-    // ⚠️ GANTI DENGAN URL DEPLOYMENT APPSCRIPT ANDA
+    // ✅ URL Google Sheets API - SUDAH TERUPDATE
     const APPSCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9zz0aIosZLNtJeSeizDg80nRzIHeNlGMZe3GzExaQWASjurO6n-9rQN17PuuQUvZD/usercontent';
     
     // Fungsi untuk simpan ke Google Sheets
     async function saveToGoogleSheets(data) {
       try {
+        console.log('📤 Mengirim data ke Google Sheets:', data);
         const response = await fetch(APPSCRIPT_URL, {
           method: 'POST',
           body: JSON.stringify(data),
@@ -666,11 +667,15 @@
         });
         
         const result = await response.json();
+        console.log('📥 Respon dari Google Sheets:', result);
+        
         if (!result.success) {
-          console.error('Gagal simpan ke Sheet:', result.error);
+          console.error('❌ Gagal simpan ke Sheet:', result.error);
+        } else {
+          console.log('✅ Data berhasil disimpan ke Google Sheets');
         }
       } catch (error) {
-        console.error('Error:', error);
+        console.error('❌ Error saat mengirim ke Google Sheets:', error);
       }
     }
 
@@ -735,7 +740,6 @@
         }
       }
 
-      // Anti-cheating: Deteksi blur/focus window
       document.addEventListener('visibilitychange', handleVisibilityChange);
       window.addEventListener('blur', handleWindowBlur);
       window.addEventListener('focus', handleWindowFocus);
@@ -761,7 +765,7 @@
     }
 
     function showCheatWarning() {
-      if (cheatBlockTime > 0) return; // Sudah dalam blocking
+      if (cheatBlockTime > 0) return;
       
       cheatBlockTime = 30;
       document.getElementById('anti-cheat-warning').classList.remove('hidden');
@@ -1261,7 +1265,9 @@
         const result = await window.dataSdk.create(newSiswa);
         
         // Simpan juga ke Google Sheets
-        await saveToGoogleSheets(newSiswa);
+        if (result.isOk) {
+          await saveToGoogleSheets(newSiswa);
+        }
         
         hideLoading();
         
@@ -1552,6 +1558,7 @@
         hideLoading();
         
         if (result.isOk) {
+          await saveToGoogleSheets(updated);
           showToast('Siswa berhasil diperbarui');
           document.getElementById('manual-nama').value = '';
           document.getElementById('manual-kelas').value = '';
@@ -1701,6 +1708,7 @@
         }
       } catch (error) {
         hideLoading();
+        console.error('Error saat save materi:', error);
         showToast('Terjadi kesalahan', 'error');
       }
     }
@@ -1828,6 +1836,7 @@
         }
       } catch (error) {
         hideLoading();
+        console.error('Error saat save tugas:', error);
         showToast('Terjadi kesalahan', 'error');
       }
     }
@@ -1953,6 +1962,7 @@
         }
       } catch (error) {
         hideLoading();
+        console.error('Error saat save kuis:', error);
         showToast('Terjadi kesalahan', 'error');
       }
     }
@@ -2208,7 +2218,7 @@
 
       // Hitung skor
       let score = 0;
-      let totalQuestions = 5; // 5 soal mock
+      let totalQuestions = 5;
 
       const mockQuestions = [
         { id: 1, correct: 1 },
@@ -2239,6 +2249,7 @@
         hideLoading();
 
         if (result.isOk) {
+          await saveToGoogleSheets(updated);
           showToast(`Kuis selesai! Nilai Anda: ${score}`, 'success');
           
           // Tampilkan hasil
@@ -2351,5 +2362,5 @@
 
     initApp();
   </script>
- <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9ca07f6086a30a12',t:'MTc3MDQ0MjI1MC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9ca0a9ca76aed572',t:'MTc3MDQ0Mzk4Ny4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
